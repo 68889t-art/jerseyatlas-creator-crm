@@ -3,6 +3,21 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
+<meta name="referrer" content="no-referrer"/>
+<script>
+/* Remove sensitive query parameters if an old or malformed login URL was opened. */
+try {
+  const current = new URL(window.location.href);
+  let sensitive = false;
+  for (const key of Array.from(current.searchParams.keys())) {
+    if (/^(email|password|passwd|pwd)$/i.test(key)) {
+      current.searchParams.delete(key);
+      sensitive = true;
+    }
+  }
+  if (sensitive) window.history.replaceState(window.history.state, "", current.pathname + current.search + current.hash);
+} catch (_) {}
+</script>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>JerseyAtlas 达人管理 CRM · 云端团队版</title>
 <meta content="JerseyAtlas 云端达人 CRM，员工账号登录、TikTok/Instagram 达人管理、跨员工去重、跟进记录及实时同步。" name="description"/>
@@ -29,7 +44,7 @@ body:not(.ja-authed) .app{display:none} body.ja-authed #loginScreen{display:none
 #passwordResetPanel[hidden]{display:none!important} #passwordResetPanel input{width:100%;border:1px solid #dce8e0;border-radius:9px;padding:12px 13px;background:#fff;font-size:14px}
 </style>
 </head>
-<body><div id="loginScreen"><div class="loginCard"><div class="loginLogo">JA</div><h1>JerseyAtlas 达人 CRM</h1><p>云端团队协作 · TikTok / Instagram 达人建联管理<br/>请使用已在 Supabase Authentication 创建并激活的员工邮箱密码登录。</p><form id="loginForm"><label for="loginEmail">员工邮箱</label><input autocomplete="username" id="loginEmail" name="email" placeholder="your-email@example.com" required="" type="email"/><label for="loginPassword">密码</label><input autocomplete="current-password" id="loginPassword" name="password" required="" type="password"/><button class="btn btn-primary" id="loginButton" type="submit">登录云端管理系统</button></form><button class="btn" id="forgotPasswordButton" type="button" style="background:#fff;border:1px solid #dce8e0;color:#126d55;width:100%;margin-top:10px">忘记密码？发送密码恢复邮件</button><div id="passwordResetPanel" hidden>
+<body><div id="loginScreen"><div class="loginCard"><div class="loginLogo">JA</div><h1>JerseyAtlas 达人 CRM</h1><p>云端团队协作 · TikTok / Instagram 达人建联管理<br/>请使用已在 Supabase Authentication 创建并激活的员工邮箱密码登录。</p><form id="loginForm" onsubmit="return false;"><label for="loginEmail">员工邮箱</label><input autocomplete="username" id="loginEmail" placeholder="your-email@example.com" required="" type="email"/><label for="loginPassword">密码</label><input autocomplete="current-password" id="loginPassword" required="" type="password"/><button class="btn btn-primary" id="loginButton" type="submit">登录云端管理系统</button></form><button class="btn" id="forgotPasswordButton" type="button" style="background:#fff;border:1px solid #dce8e0;color:#126d55;width:100%;margin-top:10px">忘记密码？发送密码恢复邮件</button><div id="passwordResetPanel" hidden>
   <h2 style="font-size:21px;margin:8px 0 7px">设置新密码</h2>
   <p style="margin:0 0 14px;font-size:13px;color:#61746b">已打开密码恢复链接。输入两次新密码后保存。请勿把恢复邮件链接发给任何人。</p>
   <form id="passwordResetForm">
