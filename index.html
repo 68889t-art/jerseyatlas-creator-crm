@@ -151,7 +151,7 @@ body:not(.ja-authed) .app{display:none} body.ja-authed #loginScreen{display:none
 <section class="section-view" id="backup"><div class="heading"><div><h1>导入、导出与备份</h1><p>支持 WPS / Excel 导入并保存到云端数据库；根据角色控制导入导出权限。</p></div></div><div class="panel">
 <div class="backup-card"><h3>① 导入历史达人名单</h3><p>支持 Excel（.xlsx）和 CSV（.csv），可读取 XLSX 工作簿中具有达人用户名或主页链接的工作表。原始文件不会被修改。同平台用户名或主页链接相同的记录自动跳过，不会覆盖已有内容。</p><div class="dropbox">点击选择文件，或直接把文件拖到这里<br/><span class="mini">第一次使用建议先导入全部旧名单</span><div style="margin-top:12px"><button class="btn btn-primary" id="importMain">选择 Excel / CSV</button></div></div></div>
 <div class="backup-card"><h3>② 导出 WPS 表格（CSV）</h3><p>导出达人全部字段，使用 UTF-8 BOM，WPS 表格可直接打开。可按平台筛选后分别导出。</p><div class="top-actions"><button class="btn" id="exportAll">⇩ 导出全部达人</button><button class="btn" id="templateCSV">下载空白录入模板</button></div></div>
-<div class="backup-card"><h3>③ 完整备份与恢复（推荐）</h3><p>JSON 可导出团队当前可见的达人数据，并可从旧版本地版导入到云端。请先在旧版导出 JSON 文件；不会自动迁移本地数据。</p><div class="top-actions"><button class="btn btn-primary" id="backupJSON">⇩ 导出完整备份</button><button class="btn" id="restoreJSON">⇧ 导入 JSON 备份</button></div></div>
+<div class="backup-card"><h3>③ CRM 业务数据备份（推荐）</h3><p>导出包含达人、合作、视频、奖励规则和跟进日志的 JSON 快照。请妥善保存原始 .json 文件，包含联系方式和寄送信息。注意：该快照用于完整数据留存，不等同于 Supabase 数据库级备份；下方导入按钮仅支持旧版达人 JSON，不支持把整套快照一键恢复。</p><div class="top-actions"><button class="btn btn-primary" id="backupJSON">⇩ 导出完整业务数据 JSON</button><button class="btn" id="restoreJSON">⇧ 导入旧版达人 JSON</button></div></div>
 
 </div><p class="bottom-note">建议使用最新 Chrome / Edge 浏览器，连接互联网后登录。导入 XLSX 需要浏览器支持 ZIP 解压；旧 .xls 请另存为 .xlsx 或 .csv。</p></section>
 </main>
@@ -321,7 +321,7 @@ async function importBatch(batch){if(!canImport())return toast('只有管理员�
 for(let raw of batch){let r=recordNorm(raw);if(!r.platform||!r.username||!/^[a-z0-9._]+$/i.test(r.username)){bad++;continue}r.assignee=currentUser.id;let dupe=seen.some(x=>conflict(x,r));if(dupe){dup++;continue}seen.push(r);payloads.push(toDb(r,false))}
 const insertChunk=async(items)=>{if(!items.length)return;let {error}=await sb.from('creators').insert(items);if(!error){add+=items.length;return}if(items.length===1){if(error.code==='23505'||/duplicate key/i.test(error.message||''))dup++;else{bad++;if(errors.length<3)errors.push(errorText(error))}return}let mid=items.length>>1;await insertChunk(items.slice(0,mid));await insertChunk(items.slice(mid))};
 $('importTop').disabled=true;$('importMain').disabled=true;try{for(let i=0;i<payloads.length;i+=40)await insertChunk(payloads.slice(i,i+40));await loadRecords();render();view('creators');toast('导入完成：新增 '+add+' 条；跳过重复 '+dup+' 条；无效/未授权 '+bad+' 条。'+(errors.length?' 错误：'+errors.join('; '):''),Boolean(errors.length))}catch(e){accessError(e)}finally{$('importTop').disabled=false;$('importMain').disabled=false}}
-async function handleImport(file){if(!canImport())return;let ext=file.name.toLowerCase().split('.').pop(),batch=[];try{if(ext==='json'){let data=JSON.parse(await file.text());batch=Array.isArray(data)?data:data.records;if(!Array.isArray(batch))throw Error('JSON 格式不符合历史备份结构');if(!confirm('确认将 JSON 记录导入云数据库？旧记录不会自动覆盖现有数据，重复达人会跳过。'))return;}else if(ext==='csv'){batch=mapRows(parseCSV(await file.text()),file.name)}else if(ext==='xlsx'){let sheets=await parseXLSX(await file.arrayBuffer());for(let sheet of sheets)batch.push(...mapRows(sheet.matrix,sheet.name))}else throw Error('支持文件：.xlsx、.csv、.json');await importBatch(batch)}catch(e){accessError(e)}}
+async function handleImport(file){if(!canImport())return;let ext=file.name.toLowerCase().split('.').pop(),batch=[];try{if(ext==='json'){let data=JSON.parse(await file.text());if(data?.backupFormat==='ja-business-snapshot-v1')throw Error('这份文件是完整业务数据快照；当前导入入口只支持旧版达人 JSON。为避免只恢复达人而遗漏合作和视频，请勿通过此入口恢复完整快照。');batch=Array.isArray(data)?data:data.records;if(!Array.isArray(batch))throw Error('JSON 格式不符合历史备份结构');if(!confirm('确认将 JSON 记录导入云数据库？旧记录不会自动覆盖现有数据，重复达人会跳过。'))return;}else if(ext==='csv'){batch=mapRows(parseCSV(await file.text()),file.name)}else if(ext==='xlsx'){let sheets=await parseXLSX(await file.arrayBuffer());for(let sheet of sheets)batch.push(...mapRows(sheet.matrix,sheet.name))}else throw Error('支持文件：.xlsx、.csv、.json');await importBatch(batch)}catch(e){accessError(e)}}
 function openFile(mode){if(!canImport())return toast('没有导入权限',true);fileMode=mode;$('fileInput').accept=mode==='json'?'.json':'.json,.csv,.xlsx';$('fileInput').click()}
 
 async function loadCRMData(){if(!profile)return;const [a,b,c]=await Promise.all([sb.from('creator_collaborations').select('*').eq('team_id',profile.team_id).order('created_at',{ascending:false}),sb.from('creator_videos').select('*').eq('team_id',profile.team_id).order('posted_at',{ascending:false}),sb.from('creator_reward_tiers').select('*').eq('team_id',profile.team_id).order('currency').order('min_views')]);if(a.error)throw a.error;if(b.error)throw b.error;if(c.error)throw c.error;collaborations=a.data||[];videos=b.data||[];rewardTiers=c.data||[]}
@@ -356,7 +356,37 @@ function bindEvents(){
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.collabEdit)editCollaboration(b.dataset.collabEdit);if(b.dataset.collabDelete)deleteCollaboration(b.dataset.collabDelete);if(b.dataset.videoEdit)editVideo(b.dataset.videoEdit);if(b.dataset.videoDelete)deleteVideo(b.dataset.videoDelete);if(b.dataset.tierEdit)editRewardTier(b.dataset.tierEdit,b.dataset.minViews);if(b.dataset.tierDelete)deleteRewardTier(b.dataset.tierDelete,b.dataset.minViews)});
 $('search').addEventListener('input',render);['platformFilter','statusFilter','regionFilter'].forEach(id=>$(id).addEventListener('change',render));$('addTop').addEventListener('click',()=>openModal());$('closeModal').onclick=closeModal;$('cancelModal').onclick=closeModal;$('modalOverlay').addEventListener('click',e=>{if(e.target===$('modalOverlay'))closeModal()});$('saveCreator').onclick=saveCreator;$('saveCollab').onclick=saveCollaboration;$('cancelCollabEdit').onclick=resetCollabForm;$('collabCreator').addEventListener('change',fillCollabDefaults);$('exportCollabs').onclick=exportCollaborations;$('saveVideo').onclick=saveVideo;$('cancelVideoEdit').onclick=resetVideoForm;$('videoCreator').addEventListener('change',fillVideoDefaults);$('videoCreatorFilter').addEventListener('change',renderVideos);$('periodType').addEventListener('change',updatePeriodPreview);$('periodStart').addEventListener('change',updatePeriodPreview);$('exportVideoTemplate').onclick=exportSingleCreatorVideoTemplate;$('saveRewardTier').onclick=saveRewardTier;
 $('closeLogModal').onclick=()=>$('logModal').classList.remove('open');$('logCancel').onclick=()=>$('logModal').classList.remove('open');$('logModal').addEventListener('click',e=>{if(e.target===$('logModal'))$('logModal').classList.remove('open')});$('saveLog').onclick=saveLog;document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();$('logModal').classList.remove('open')}});
-$('exportAll').onclick=()=>exportCSV(true);$('exportCreators').onclick=()=>exportCSV(false);$('templateCSV').onclick=()=>download('JerseyAtlas_达人导入模板.csv','\ufeff'+COLUMNS.map(x=>csvCell(x[1])).join(',')+'\r\n','text/csv;charset=utf-8');$('backupJSON').onclick=()=>{if(!canImport())return;download('JerseyAtlas_云端备份_'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify({app:'JerseyAtlas Creator CRM',version:'3.0',createdAt:new Date().toISOString(),records},null,2),'application/json;charset=utf-8')};$('restoreJSON').onclick=()=>openFile('json');['importTop','importMain'].forEach(id=>$(id).onclick=()=>openFile('all'));
+$('exportAll').onclick=()=>exportCSV(true);$('exportCreators').onclick=()=>exportCSV(false);$('templateCSV').onclick=()=>download('JerseyAtlas_达人导入模板.csv','\ufeff'+COLUMNS.map(x=>csvCell(x[1])).join(',')+'\r\n','text/csv;charset=utf-8');async function getBackupRows(table,teamOnly=true){
+  const rows=[];const step=500;
+  for(let offset=0;offset<100000;offset+=step){
+    let q=sb.from(table).select('*');
+    if(teamOnly)q=q.eq('team_id',profile.team_id);
+    q=table==='creator_reward_tiers'?q.order('currency').order('min_views'):q.order('id');
+    const {data,error}=await q.range(offset,offset+step-1);
+    if(error)throw Error(table+' 数据导出失败：'+errorText(error));
+    rows.push(...(data||[]));
+    if(!data||data.length<step)return rows;
+  }
+  throw Error(table+' 数据超过本次导出上限，请联系管理员做数据库级备份。');
+}
+async function exportBusinessSnapshot(){
+  if(!isAdmin())return toast('仅管理员可导出业务快照',true);
+  const btn=$('backupJSON');btn.disabled=true;btn.textContent='正在整理业务数据…';
+  try{
+    const [creatorRows,collabRows,videoRows,tierRows,allLogs]=await Promise.all([
+      getBackupRows('creators'),getBackupRows('creator_collaborations'),
+      getBackupRows('creator_videos'),getBackupRows('creator_reward_tiers'),getBackupRows('outreach_logs',false)
+    ]);
+    const creatorIds=new Set(creatorRows.map(r=>r.id));
+    const logs=allLogs.filter(r=>creatorIds.has(r.creator_id));
+    const tables={creators:creatorRows,creator_collaborations:collabRows,creator_videos:videoRows,creator_reward_tiers:tierRows,outreach_logs:logs};
+    const counts={};for(const [name,values] of Object.entries(tables))counts[name]=values.length;
+    const payload={app:'JerseyAtlas Creator CRM',version:'3.0',backupFormat:'ja-business-snapshot-v1',createdAt:new Date().toISOString(),teamId:profile.team_id,counts,records,tables};
+    download('JerseyAtlas_CRM_业务数据备份_'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(payload,null,2),'application/json;charset=utf-8');
+    toast('业务快照导出成功：'+creatorRows.length+' 位达人、'+collabRows.length+' 条合作、'+videoRows.length+' 条视频、'+tierRows.length+' 档奖励、'+logs.length+' 条跟进日志');
+  }catch(e){accessError(e)}finally{btn.disabled=false;btn.textContent='⇩ 导出完整业务数据 JSON'}
+}
+$('backupJSON').onclick=exportBusinessSnapshot;$('restoreJSON').onclick=()=>openFile('json');['importTop','importMain'].forEach(id=>$(id).onclick=()=>openFile('all'));
 $('fileInput').addEventListener('change',e=>{let f=e.target.files?.[0];if(f)handleImport(f);e.target.value=''});const drop=document.querySelector('.dropbox');['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.background='#e8f7eb'}));['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.background=''}));drop.addEventListener('drop',e=>{e.preventDefault();if(canImport()&&e.dataTransfer.files[0])handleImport(e.dataTransfer.files[0])});
 $('logoutBtn').onclick=async()=>{if(!sb)return;try{await sb.auth.signOut()}catch(e){console.error(e)}stopSync();currentUser=null;profile=null;records=[];showLogin('已退出登录。')};
 $('loginForm').onsubmit=async(e)=>{e.preventDefault();if(!sb)return loginNotice('Supabase 客户端未加载，请检查浏览器网络。',true);const btn=$('loginButton');btn.disabled=true;loginNotice('正在安全登录…');try{let {error}=await sb.auth.signInWithPassword({email:$('loginEmail').value.trim(),password:$('loginPassword').value});if(error)throw error;await authInit();}catch(err){loginNotice('登录失败：'+errorText(err)+'。请确认邮箱、密码及员工已激活。',true)}finally{btn.disabled=false}};
