@@ -123,7 +123,7 @@ body:not(.ja-authed) .app{display:none} body.ja-authed #loginScreen{display:none
 <div class="field"><label>关联达人 <span class="required">*</span></label><select name="creator_id" id="videoCreator" required><option value="">请选择达人</option></select></div>
 <div class="field"><label>视频平台</label><select name="platform" id="videoPlatform"><option>TikTok</option><option>Instagram</option><option>YouTube</option><option>其他</option></select></div>
 <div class="field"><label>达人主页链接</label><input name="creator_profile_url" id="videoProfileUrl" placeholder="达人主页链接"/></div>
-<div class="field"><label>视频链接</label><input name="video_url" id="videoUrl" placeholder="视频公开链接"/></div>
+<div class="field span2"><label>视频链接</label><div class="input-line"><input name="video_url" id="videoUrl" placeholder="TikTok 公开作品链接"/><button class="btn btn-subtle" type="button" id="lookupTikTokVideo">获取视频数据</button></div><small class="help" id="videoLookupStatus">识别播放量和发布时间；确认后再保存视频记录。</small></div>
 <div class="field"><label>实际发布日期</label><input name="posted_at" type="date"/></div>
 <div class="field"><label>统计周期</label><select name="period_type" id="periodType"><option>7天</option><option>长期</option></select></div>
 <div class="field"><label>周期合作开始日期</label><input name="period_start" id="periodStart" type="date"/></div>
@@ -160,7 +160,7 @@ body:not(.ja-authed) .app{display:none} body.ja-authed #loginScreen{display:none
 <div class="field"><label>平台 <span class="required">*</span></label><select id="f-platform" name="platform" required=""><option>TikTok</option><option>Instagram</option></select></div>
 <div class="field"><label>账号名称</label><input name="name" placeholder="达人主页显示名称"/></div>
 <div class="field"><label>@用户名</label><input id="f-username" name="username" placeholder="例如 @username"/></div>
-<div class="field"><label>主页链接</label><input id="f-url" name="url" placeholder="https://www.tiktok.com/@..."/></div>
+<div class="field span2"><label>主页链接</label><div class="input-line"><input id="f-url" name="url" placeholder="https://www.tiktok.com/@..." autocomplete="url"/><button class="btn btn-subtle" type="button" id="lookupTikTokProfile">自动识别</button></div><small class="help" id="profileLookupStatus">仅查询公开 TikTok 页面；识别后请人工核对，再点击「保存达人」。</small></div>
 <div class="field"><label>地区 / IP</label><select name="region"><option value="">未确认</option><option>英国</option><option>法国</option><option>德国</option><option>美国</option><option>巴西</option><option>其他</option></select></div>
 <div class="field"><label>粉丝数（人工核验）</label><input min="0" name="followers" placeholder="未核验可留空" step="1" type="number"/></div>
 <div class="field"><label>视频风格</label><select name="style"><option value="">未分类</option><option>足球解说</option><option>跳舞视频</option><option>球衣展示穿搭</option><option>运动风格</option><option>足球视频剪辑</option><option>其他</option></select></div>
@@ -292,6 +292,50 @@ $('reportStats').innerHTML=[['达人总数',s.all],['已联系',s.contacted],['�
 function renderTeam(){if(!$('teamTable'))return;let mm=teamMembers.filter(m=>isAdmin()||m.team_id===profile.team_id);$('teamCount').textContent=mm.length+' 位成员（你有权限查看的范围）';$('teamTable').innerHTML='<table class="staff-list"><thead><tr><th>员工</th><th>邮箱</th><th>角色</th><th>状态</th><th>团队</th></tr></thead><tbody>'+mm.map(m=>'<tr><td>'+safe(m.display_name||'未命名')+'</td><td>'+safe(m.email||'—')+'</td><td>'+safe(roleText(m.role))+'</td><td>'+ (m.is_active?'<span class="status-ok">已激活</span>':'<span class="status-review">未激活</span>')+'</td><td>'+safe(teamNames.find(t=>t.id===m.team_id)?.name||'—')+'</td></tr>').join('')+'</tbody></table>'}
 function view(v){if(v==='backup'&&!canImport())return toast('仅管理员可导入导出',true);currentView=v;document.querySelectorAll('.section-view').forEach(x=>x.classList.toggle('active',x.id===v));document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$('crumb').textContent={home:'工作台总览',creators:'达人名单',collaborations:'合作账号',videos:'视频统计',rewards:'奖励设置',followup:'建联与跟进',reports:'数据统计',backup:'导入与导出'}[v]||v;window.scrollTo({top:0,behavior:'smooth'})}
 function formRead(){const f=new FormData($('creatorForm'));let o=Object.fromEntries(f.entries());o.external=o.external||'待人工复核';return recordNorm(o)}
+async function lookupTikTok(kind){
+  const profileMode=kind==='profile';
+  const input=$(profileMode?'f-url':'videoUrl');
+  const status=$(profileMode?'profileLookupStatus':'videoLookupStatus');
+  const button=$(profileMode?'lookupTikTokProfile':'lookupTikTokVideo');
+  const url=normStr(input.value);
+  if(!url){toast('请先粘贴 TikTok '+(profileMode?'主页':'作品')+'链接。',true);input.focus();return}
+  if(platformFrom(url)!=='TikTok'){toast('目前只支持 TikTok 链接。',true);return}
+  if(!profile||!isAdmin()){toast('仅管理员可使用自动识别。',true);return}
+  button.disabled=true;button.textContent='识别中…';status.textContent='正在读取 TikTok 公开页面，请稍候…';
+  try{
+    const {data,error}=await sb.functions.invoke('tiktok-lookup',{body:{kind,url}});
+    if(error)throw error;
+    if(!data?.ok)throw Error(data?.error||'TikTok 自动识别失败。');
+    const d=data.data||{};
+    if(profileMode){
+      if(d.username)$('f-username').value=d.username;
+      if(d.nickname)$('creatorForm').elements.namedItem('name').value=d.nickname;
+      if(d.profileUrl)$('f-url').value=d.profileUrl;
+      if(d.followers!==null&&d.followers!==undefined)$('creatorForm').elements.namedItem('followers').value=d.followers;
+      if(d.regionLabel){const region=$('creatorForm').elements.namedItem('region');if([...region.options].some(o=>o.value===d.regionLabel||o.text===d.regionLabel))region.value=d.regionLabel}
+      status.textContent='识别完成：@'+(d.username||'未知')+'；粉丝 '+(d.followers===null?'未提供':Number(d.followers).toLocaleString())+'；地区 '+(d.regionLabel||'未能从公开页面确认')+'。请核对后手动保存。';
+      toast('TikTok 主页资料已填入表单，请核对后保存。');
+    }else{
+      if(d.username){
+        const matched=records.find(x=>x.platform==='TikTok'&&x.username.toLowerCase()===d.username.toLowerCase());
+        if(matched){$('videoCreator').value=matched.id;fillVideoDefaults()}
+      }
+      if(d.profileUrl)$('videoProfileUrl').value=d.profileUrl;
+      if(d.postedAt){$('videoForm').elements.namedItem('posted_at').value=d.postedAt;if(!$('periodStart').value)$('periodStart').value=d.postedAt;updatePeriodPreview()}
+      if(d.playCount!==null&&d.playCount!==undefined)$('videoForm').elements.namedItem('play_count').value=d.playCount;
+      const extra=['播放量 '+Number(d.playCount||0).toLocaleString()];
+      if(d.likeCount!==null&&d.likeCount!==undefined)extra.push('点赞 '+Number(d.likeCount).toLocaleString());
+      if(d.commentCount!==null&&d.commentCount!==undefined)extra.push('评论 '+Number(d.commentCount).toLocaleString());
+      if(d.shareCount!==null&&d.shareCount!==undefined)extra.push('分享 '+Number(d.shareCount).toLocaleString());
+      status.textContent='识别完成：'+extra.join(' · ')+'；发布时间 '+(d.postedAt||'未提供')+'。请核对达人关联后手动保存。';
+      toast('TikTok 视频数据已填入表单，请核对后保存。');
+    }
+  }catch(e){
+    const message=errorText(e);
+    status.textContent='识别失败：'+message+' 未修改数据库；你仍可手动填写。';
+    toast(message,true);
+  }finally{button.disabled=false;button.textContent=profileMode?'自动识别':'获取视频数据'}
+}
 function openModal(id=null){editId=id;const form=$('creatorForm');form.reset();$('formError').style.display='none';let r=id?records.find(x=>x.id===id):null;if(id&&!r)return;if(r&&!canEdit(r))return toast('仅管理员可编辑达人资料',true);$('modalTitle').textContent=r?'编辑达人资料':'新增达人';if(r){const data={...r};for(let [k,v] of Object.entries(data)){let x=form.elements.namedItem(k);if(x&&x instanceof HTMLElement)x.value=v??''}$('f-platform').disabled=!!r;$('f-username').disabled=!!r; // 保留规范化去重键，避免绕开数据库索引
 }else{$('f-platform').disabled=false;$('f-username').disabled=false}
 $('f-assignee').value=currentUser.id;
@@ -354,7 +398,7 @@ function bindEvents(){
   $('passwordResetForm').addEventListener('submit',saveRecoveryPassword);
   $('returnToLogin').addEventListener('click',async()=>{try{await sb?.auth.signOut()}catch(e){}returnToSignIn('可以重新发送密码恢复邮件，或使用已有密码登录。')});document.querySelectorAll('[data-view]').forEach(x=>x.addEventListener('click',()=>view(x.dataset.view)));document.addEventListener('click',e=>{let b=e.target.closest('button');if(!b)return;if(b.dataset.goto)view(b.dataset.goto);if(b.dataset.edit)openModal(b.dataset.edit);if(b.dataset.delete)deleteRecord(b.dataset.delete);if(b.dataset.log)showLogs(b.dataset.log);if(b.dataset.copy)copyProfile(b.dataset.copy)});
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.collabEdit)editCollaboration(b.dataset.collabEdit);if(b.dataset.collabDelete)deleteCollaboration(b.dataset.collabDelete);if(b.dataset.videoEdit)editVideo(b.dataset.videoEdit);if(b.dataset.videoDelete)deleteVideo(b.dataset.videoDelete);if(b.dataset.tierEdit)editRewardTier(b.dataset.tierEdit,b.dataset.minViews);if(b.dataset.tierDelete)deleteRewardTier(b.dataset.tierDelete,b.dataset.minViews)});
-$('search').addEventListener('input',render);['platformFilter','statusFilter','regionFilter'].forEach(id=>$(id).addEventListener('change',render));$('addTop').addEventListener('click',()=>openModal());$('closeModal').onclick=closeModal;$('cancelModal').onclick=closeModal;$('modalOverlay').addEventListener('click',e=>{if(e.target===$('modalOverlay'))closeModal()});$('saveCreator').onclick=saveCreator;$('saveCollab').onclick=saveCollaboration;$('cancelCollabEdit').onclick=resetCollabForm;$('collabCreator').addEventListener('change',fillCollabDefaults);$('exportCollabs').onclick=exportCollaborations;$('saveVideo').onclick=saveVideo;$('cancelVideoEdit').onclick=resetVideoForm;$('videoCreator').addEventListener('change',fillVideoDefaults);$('videoCreatorFilter').addEventListener('change',renderVideos);$('periodType').addEventListener('change',updatePeriodPreview);$('periodStart').addEventListener('change',updatePeriodPreview);$('exportVideoTemplate').onclick=exportSingleCreatorVideoTemplate;$('saveRewardTier').onclick=saveRewardTier;
+$('search').addEventListener('input',render);['platformFilter','statusFilter','regionFilter'].forEach(id=>$(id).addEventListener('change',render));$('addTop').addEventListener('click',()=>openModal());$('closeModal').onclick=closeModal;$('cancelModal').onclick=closeModal;$('modalOverlay').addEventListener('click',e=>{if(e.target===$('modalOverlay'))closeModal()});$('saveCreator').onclick=saveCreator;$('lookupTikTokProfile').onclick=()=>lookupTikTok('profile');$('lookupTikTokVideo').onclick=()=>lookupTikTok('video');$('saveCollab').onclick=saveCollaboration;$('cancelCollabEdit').onclick=resetCollabForm;$('collabCreator').addEventListener('change',fillCollabDefaults);$('exportCollabs').onclick=exportCollaborations;$('saveVideo').onclick=saveVideo;$('cancelVideoEdit').onclick=resetVideoForm;$('videoCreator').addEventListener('change',fillVideoDefaults);$('videoCreatorFilter').addEventListener('change',renderVideos);$('periodType').addEventListener('change',updatePeriodPreview);$('periodStart').addEventListener('change',updatePeriodPreview);$('exportVideoTemplate').onclick=exportSingleCreatorVideoTemplate;$('saveRewardTier').onclick=saveRewardTier;
 $('closeLogModal').onclick=()=>$('logModal').classList.remove('open');$('logCancel').onclick=()=>$('logModal').classList.remove('open');$('logModal').addEventListener('click',e=>{if(e.target===$('logModal'))$('logModal').classList.remove('open')});$('saveLog').onclick=saveLog;document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();$('logModal').classList.remove('open')}});
 $('exportAll').onclick=()=>exportCSV(true);$('exportCreators').onclick=()=>exportCSV(false);$('templateCSV').onclick=()=>download('JerseyAtlas_达人导入模板.csv','\ufeff'+COLUMNS.map(x=>csvCell(x[1])).join(',')+'\r\n','text/csv;charset=utf-8');async function getBackupRows(table,teamOnly=true){
   const rows=[];const step=500;
