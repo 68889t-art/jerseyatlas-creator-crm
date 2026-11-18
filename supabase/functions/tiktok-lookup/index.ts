@@ -203,10 +203,10 @@ Deno.serve(async (req: Request) => {
     if (!data) {
       return reply({ ok: false, error: "没有在 TikTok 页面中找到所需的公开资料。请确认账号/作品公开且链接正确；未保存任何数据。" }, 422, origin);
     }
-    if (kind === "profile" && !data.username) {
+    if (kind === "profile" && !(data as any).username) {
       return reply({ ok: false, error: "TikTok 页面没有返回用户名，无法安全匹配达人。" }, 422, origin);
     }
-    if (kind === "video" && data.playCount === null) {
+    if (kind === "video" && (data as any).playCount === null) {
       return reply({ ok: false, error: "读取到了作品页面，但没有取得播放量。请稍后重试或手动填写。" }, 422, origin);
     }
     return reply({ ok: true, kind, data, resolvedUrl: finalUrl, fetchedAt: new Date().toISOString(), source: "TikTok 公开页面" }, 200, origin);
