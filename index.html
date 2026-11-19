@@ -90,7 +90,7 @@ body:not(.ja-authed) .app{display:none} body.ja-authed #loginScreen{display:none
 </section>
 
 <section class="section-view" id="collaborations">
-<div class="heading"><div><h1>合作账号</h1><p>手动添加合作记录，或从达人状态「已合作」自动同步显示；暂停合作独立管理。同步展示不写入空白数据库记录。</p></div><button class="btn btn-subtle" id="exportCollabs">⇩ 导出合作列表 CSV</button></div>
+<div class="heading"><div><h1>合作账号</h1><p>手动添加合作记录，或从达人状态「已合作」自动同步显示；「暂停合作」单独管理，「不合适」自动隐藏且保留历史记录。</p></div><button class="btn btn-subtle" id="exportCollabs">⇩ 导出合作列表 CSV</button></div>
 <div class="panel"><div class="panel-body">
 <details class="crm-details" open><summary id="collabFormTitle">＋ 新增 / 编辑合作记录</summary>
 <form id="collabForm"><div class="form-grid">
@@ -437,6 +437,8 @@ function collaborationEntries(){
   for(const c of collaborations){
     const creator=byId.get(c.creator_id)||null;
     covered.add(c.creator_id);
+    // 「不合适」只隐藏于合作页面，保留数据库中的历史合作记录。
+    if(creator?.status==='不合适')continue;
     (creator?.status==='暂停合作'?paused:active).push({creator,collab:c});
   }
   for(const creator of records){
